@@ -1,0 +1,1097 @@
+﻿@* @model Application.Models.PosViewModel
+@{
+    ViewData["Title"] = "POS Terminal";
+    ViewData["Active"] = "Pos";
+    Layout = "_Layout";
+}
+
+<style>
+    /* --- POS page only --- */
+    .pos-wrap { display: grid; grid-template-columns: 1.2fr 1fr; gap: 1rem; height: calc(100vh - 120px); }
+    @@media (max-width: 992px) { .pos-wrap { grid-template-columns: 1fr; height: auto; } }
+
+    .pos-left  { display: flex; flex-direction: column; gap: .75rem; min-height: 0; }
+    .pos-right { display: flex; flex-direction: column; gap: .75rem; min-height: 0; }
+
+    .pos-search { position: relative; }
+    .pos-search input { font-size: 1.15rem; padding: .85rem 1rem; }
+    .pos-search .hint {
+        position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+        font-size: .75rem; color: #8c7a5a; background: #fdf6ec; padding: 2px 8px; border-radius: 6px;
+    }
+
+    .product-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+        gap: .6rem;
+        overflow-y: auto;
+        flex: 1;
+        padding-right: 4px;
+    }
+    .product-card {
+        background: #fff;
+        border: 1px solid #eadfc8;
+        border-radius: 10px;
+        padding: .7rem;
+        cursor: pointer;
+        user-select: none;
+        transition: .1s ease-in-out;
+    }
+    .product-card:hover { border-color: #c98a4b; transform: translateY(-1px); }
+    .product-card .name { font-weight: 600; font-size: .92rem; line-height: 1.2; }
+    .product-card .cat  { font-size: .72rem; color: #8c7a5a; margin-top: 2px; }
+    .product-card .price { font-weight: 700; color: #a86f38; margin-top: 6px; }
+    .product-card .bc   { font-size: .7rem; color: #999; }
+    .product-card.out   { opacity: .45; pointer-events: none; }
+
+    .cart-panel { background: #fff; border-radius: 12px; box-shadow: 0 2px 8px rgba(90,55,20,.08);
+                  display: flex; flex-direction: column; min-height: 0; height: 100%; }
+    .cart-header { padding: .75rem 1rem; border-bottom: 1px solid #eee;
+                   display: flex; justify-content: space-between; align-items: center; }
+    .cart-body { flex: 1; overflow-y: auto; }
+    .cart-table { width: 100%; font-size: .9rem; }
+    .cart-table th { background: #fdf6ec; color: #5a3714; font-weight: 600;
+                     position: sticky; top: 0; font-size: .78rem; text-transform: uppercase; }
+    .cart-table th, .cart-table td { padding: .45rem .55rem; vertical-align: middle; }
+    .cart-table tr td { border-bottom: 1px solid #f4efe4; }
+    .qty-input { width: 70px; text-align: right; padding: .25rem .35rem; }
+    .line-total { font-weight: 600; text-align: right; }
+
+    .cart-empty { padding: 3rem 1rem; text-align: center; color: #b8a98e; }
+    .cart-empty .em { font-size: 2.5rem; }
+
+    .cart-footer { border-top: 1px solid #eee; padding: .75rem 1rem; background: #fffdf8; }
+    .summary-row { display: flex; justify-content: space-between; font-size: .95rem; margin-bottom: .35rem; }
+    .summary-row.grand { font-size: 1.35rem; font-weight: 700; color: #5a3714; margin: .5rem 0; }
+    .summary-row input { width: 110px; text-align: right; }
+
+    .btn-checkout { width: 100%; padding: .85rem; font-size: 1.05rem; font-weight: 600; }
+
+    .flash { position: fixed; top: 70px; right: 20px; z-index: 9999;
+             padding: .8rem 1.2rem; border-radius: 10px; color: #fff;
+             font-weight: 600; box-shadow: 0 6px 20px rgba(0,0,0,.15); }
+    .flash.ok  { background: #2e9e5b; }
+    .flash.err { background: #d9534f; }
+</style>
+
+<div class="pos-wrap">
+
+    <!-- ── LEFT: search + product grid ───────────────── -->
+    <div class="pos-left">
+        <div class="pos-search">
+            <input id="searchBox" class="form-control"
+                   placeholder="Scan barcode or type product name… (Enter to add)" autocomplete="off" autofocus />
+            <span class="hint">F2 = focus • Enter = add</span>
+        </div>
+
+        <div id="productGrid" class="product-grid">
+            @foreach (var p in Model.Products)
+            {
+                <div class="product-card"
+                     data-id="@p.ProductId"
+                     data-name="@p.ProductName"
+                     data-barcode="@(p.Barcode ?? "")"
+                     data-price="@p.SalePrice"
+                     data-unit="@p.Unit"
+                     title="@p.CategoryName">
+                    <div class="name">@p.ProductName</div>
+                    <div class="cat">@p.CategoryName</div>
+                    @if (!string.IsNullOrEmpty(p.Barcode))
+                    {
+                        <div class="bc">@p.Barcode</div>
+                    }
+                    <div class="price">₨ @p.SalePrice.ToString("N2") <span style="font-size:.7rem;font-weight:400;color:#8c7a5a;">/ @p.Unit</span></div>
+                </div>
+            }
+            @if (!Model.Products.Any())
+            {
+                <div class="text-muted p-4">No active products. Add products first.</div>
+            }
+        </div>
+    </div>
+
+    <!-- ── RIGHT: cart + checkout ─────────────────────── -->
+    <div class="pos-right">
+        <div class="cart-panel">
+            <div class="cart-header">
+                <div>
+                    <div class="fw-bold">🛒 Current Sale</div>
+                    <div class="small text-muted">Invoice: @Model.InvoiceNo</div>
+                </div>
+                <button id="clearCartBtn" class="btn btn-sm btn-outline-danger">Clear (Esc)</button>
+            </div>
+
+            <div class="cart-body">
+                <table class="cart-table">
+                    <thead>
+                        <tr>
+                            <th>Item</th>
+                            <th style="width:90px;">Qty</th>
+                            <th style="width:90px;" class="text-end">Price</th>
+                            <th style="width:90px;" class="text-end">Total</th>
+                            <th style="width:36px;"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="cartBody"></tbody>
+                </table>
+                <div id="cartEmpty" class="cart-empty">
+                    <div class="em">🧾</div>
+                    <div>No items yet</div>
+                    <div class="small mt-1">Scan / search and press <kbd>Enter</kbd></div>
+                </div>
+            </div>
+
+            <div class="cart-footer">
+                <div class="summary-row">
+                    <span>Subtotal</span>
+                    <span>₨ <span id="subTotal">0.00</span></span>
+                </div>
+                <div class="summary-row">
+                    <label for="discountInput">Discount</label>
+                    <input id="discountInput" type="number" min="0" step="0.01" value="0" class="form-control form-control-sm d-inline-block" />
+                </div>
+                <div class="summary-row grand">
+                    <span>Total</span>
+                    <span>₨ <span id="grandTotal">0.00</span></span>
+                </div>
+                <div class="summary-row">
+                    <label for="paidInput">Paid</label>
+                    <input id="paidInput" type="number" min="0" step="0.01" value="0" class="form-control form-control-sm d-inline-block" />
+                </div>
+                <div class="summary-row">
+                    <label for="paymentSelect">Payment</label>
+                    <select id="paymentSelect" class="form-select form-select-sm" style="width:130px;">
+                        @foreach (var m in Model.PaymentMethods)
+                        {
+                            <option value="@m">@m</option>
+                        }
+                    </select>
+                </div>
+                <div class="summary-row">
+                    <span>Change / Remaining</span>
+                    <span>₨ <span id="remainingAmt">0.00</span></span>
+                </div>
+
+                <button id="checkoutBtn" class="btn btn-success btn-checkout mt-2">
+                    ✅ Complete Sale (F10)
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<input type="hidden" id="antiForgeryToken" value="@Html.AntiForgeryToken()"/>
+
+@section Scripts {
+<script>
+(function () {
+    // ─── state ─────────────────────────────────────────────
+    const products = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.Products));
+    const cart = [];    // { productId, name, unit, price, qty }
+    let lastInvoiceNo = '@Model.InvoiceNo';
+
+    const $search    = document.getElementById('searchBox');
+    const $grid      = document.getElementById('productGrid');
+    const $cartBody  = document.getElementById('cartBody');
+    const $cartEmpty = document.getElementById('cartEmpty');
+    const $sub       = document.getElementById('subTotal');
+    const $grand     = document.getElementById('grandTotal');
+    const $discount  = document.getElementById('discountInput');
+    const $paid      = document.getElementById('paidInput');
+    const $payMethod = document.getElementById('paymentSelect');
+    const $remain    = document.getElementById('remainingAmt');
+    const $checkout  = document.getElementById('checkoutBtn');
+    const $clear     = document.getElementById('clearCartBtn');
+    const token = document.querySelector('input[name="__RequestVerificationToken"]').value;
+    const fmt = n => Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+
+
+    function flash(msg, type = 'ok') {
+        const el = document.createElement('div');
+        el.className = 'flash ' + type;
+        el.textContent = msg;
+        document.body.appendChild(el);
+        setTimeout(() => el.remove(), 2200);
+    }
+
+    function subTotal() { return cart.reduce((s, i) => s + i.price * i.qty, 0); }
+    function grandTotal() {
+        const st = subTotal();
+        const d  = Math.min(Number($discount.value) || 0, st);
+        return Math.max(0, st - d);
+    }
+    function refreshTotals() {
+        const st = subTotal();
+        const gt = grandTotal();
+        const paid = Number($paid.value) || 0;
+        $sub.textContent   = fmt(st);
+        $grand.textContent = fmt(gt);
+        $remain.textContent = fmt(Math.max(0, gt - paid));
+    }
+
+    // ─── add to cart ───────────────────────────────────────
+    function addToCart(productId, qty = 1) {
+        const p = products.find(x => x.productId === productId);
+        if (!p) return;
+
+        const existing = cart.find(i => i.productId === productId);
+        if (existing) {
+            existing.qty += qty;
+        } else {
+            cart.push({
+                productId: p.productId,
+                name: p.productName,
+                unit: p.unit,
+                price: p.salePrice,
+                qty: qty
+            });
+        }
+        renderCart();
+        // Auto-fill paid = grand total as a courtesy, only if user hasn't typed
+        if (Number($paid.value) === 0) {
+            $paid.value = grandTotal().toFixed(2);
+            refreshTotals();
+        }
+    }
+
+    // ─── find by code / name ───────────────────────────────
+    function findByInput(text) {
+        text = (text || '').trim();
+        if (!text) return null;
+        // 1) exact barcode
+        let p = products.find(x => x.barcode && x.barcode === text);
+        if (p) return p;
+        // 2) exact product id (numeric)
+        if (/^\d+$/.test(text)) {
+            p = products.find(x => x.productId === Number(text));
+            if (p) return p;
+        }
+        // 3) name contains (case-insensitive)
+        const lower = text.toLowerCase();
+        p = products.find(x => (x.productName ?? '').toLowerCase().includes(lower));
+        return p || null;
+    }
+
+    // ─── cart render ───────────────────────────────────────
+    function renderCart() {
+        $cartBody.innerHTML = '';
+        if (cart.length === 0) {
+            $cartEmpty.style.display = 'block';
+        } else {
+            $cartEmpty.style.display = 'none';
+        }
+        cart.forEach((item, idx) => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>
+                    <div class="fw-semibold">${escapeHtml(item.name)}</div>
+        <div class="small text-muted">@@${fmt(item.price)} / ${escapeHtml(item.unit)}</div>
+        </td>
+                <td>
+                    <input type="number" min="0.001" step="0.001" value="${item.qty}"
+                           class="form-control form-control-sm qty-input" data-idx="${idx}" />
+                </td>
+                <td class="text-end">₨ ${fmt(item.price)}</td>
+                <td class="line-total">₨ ${fmt(item.price * item.qty)}</td>
+                <td>
+                    <button class="btn btn-sm btn-outline-danger px-2 py-0 remove-btn" data-idx="${idx}">×</button>
+                </td>
+            `;
+            $cartBody.appendChild(tr);
+        });
+
+        // wire qty & remove
+        $cartBody.querySelectorAll('.qty-input').forEach(inp => {
+            inp.addEventListener('change', e => {
+                const i = Number(e.target.dataset.idx);
+                const v = parseFloat(e.target.value);
+                if (!(v > 0)) { cart[i].qty = 1; e.target.value = 1; }
+                else cart[i].qty = v;
+                renderCart();
+            });
+            inp.addEventListener('keydown', e => {
+                if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); }
+            });
+        });
+        $cartBody.querySelectorAll('.remove-btn').forEach(btn => {
+            btn.addEventListener('click', e => {
+                cart.splice(Number(e.target.dataset.idx), 1);
+                renderCart();
+            });
+        });
+
+        refreshTotals();
+    }
+
+    function escapeHtml(s) {
+        return String(s).replace(/[&<>"']/g, c => ({
+            '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+        }[c]));
+    }
+
+    // ─── search behavior ───────────────────────────────────
+    function runSearch() {
+        const text = $search.value;
+        if (!text.trim()) return;
+
+        // If exact barcode match → add silently (scanner flow)
+        const exact = products.find(x => x.barcode && x.barcode === text.trim());
+        if (exact) {
+            addToCart(exact.productId, 1);
+            $search.value = '';
+            return;
+        }
+        console.log("exact: ", exact);
+        console.log("text: ",text);
+
+
+        // Otherwise use fuzzy find
+        const p = findByInput(text);
+        if (p) {
+            addToCart(p.productId, 1);
+            $search.value = '';
+        } else {
+            flash('No product matched: ' + text, 'err');
+            $search.select();
+        }
+    }
+
+    // ─── events ────────────────────────────────────────────
+    $search.addEventListener('keydown', e => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            runSearch();
+        }
+        if (e.key === 'Escape') {
+            $search.value = '';
+        }
+    });
+
+    $grid.addEventListener('click', e => {
+        const card = e.target.closest('.product-card');
+        if (!card) return;
+        addToCart(Number(card.dataset.id), 1);
+        $search.focus();
+    });
+
+    $discount.addEventListener('input', refreshTotals);
+    $paid.addEventListener('input', refreshTotals);
+
+    $clear.addEventListener('click', () => {
+        cart.length = 0;
+        $discount.value = 0;
+        $paid.value = 0;
+        renderCart();
+        $search.focus();
+    });
+
+    // ─── global shortcuts ──────────────────────────────────
+    document.addEventListener('keydown', e => {
+        // F2 → focus search
+        if (e.key === 'F2') { e.preventDefault(); $search.focus(); $search.select(); }
+        // F10 → checkout
+        if (e.key === 'F10') { e.preventDefault(); doCheckout(); }
+        // Esc → focus search (unless input focused)
+        if (e.key === 'Escape' && document.activeElement.tagName !== 'INPUT'
+            && document.activeElement.tagName !== 'SELECT') {
+            $search.focus();
+        }
+    });
+
+    // ─── checkout ──────────────────────────────────────────
+    async function doCheckout() {
+        if (cart.length === 0) { flash('Cart is empty.', 'err'); return; }
+
+        const st = subTotal();
+        const disc = Math.min(Number($discount.value) || 0, st);
+        const gt = Math.max(0, st - disc);
+        const paid = Number($paid.value) || 0;
+
+        if (paid < gt) {
+            if (!confirm(`Paid amount (₨ ${fmt(paid)}) is less than total (₨ ${fmt(gt)}). Continue with remaining ₨ ${fmt(gt - paid)}?`))
+                return;
+        }
+
+        const body = {
+            subTotal: st,
+            discount: disc,
+            grandTotal: gt,
+            paidAmount: paid,
+            paymentMethod: $payMethod.value,
+            items: cart.map(i => ({
+                productId: i.productId,
+                quantity: i.qty,
+                unitPrice: i.price,
+                discount: 0,
+                totalAmount: i.price * i.qty
+            }))
+        };
+
+        $checkout.disabled = true;
+        try {
+            const res = await fetch('/Pos/Checkout', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'RequestVerificationToken': token
+                },
+                body: JSON.stringify(body)
+            });
+            const data = await res.json();
+
+            if (!res.ok) {
+                flash(data.message || 'Checkout failed', 'err');
+                return;
+            }
+
+            lastInvoiceNo = data.invoiceNo;
+            flash(`✅ Sale saved • ${data.invoiceNo}`, 'ok');
+
+            // reset cart
+            cart.length = 0;
+            $discount.value = 0;
+            $paid.value = 0;
+            renderCart();
+
+            // open thermal-style receipt
+            window.open('/Pos/Receipt/' + data.saleId, '_blank');
+
+            // Focus search again for the next customer
+            $search.focus();
+        } catch (err) {
+            flash('Network error: ' + err.message, 'err');
+        } finally {
+            $checkout.disabled = false;
+        }
+    }
+
+    $checkout.addEventListener('click', doCheckout);
+
+    // ─── boot ──────────────────────────────────────────────
+    renderCart();
+    $search.focus();
+})();
+</script>
+} *@
+
+
+@model Application.Models.PosViewModel
+@{
+    ViewData["Title"] = "POS Terminal";
+    ViewData["Active"] = "Pos";
+    Layout = "_Layout";
+}
+
+<style>
+    .pos-wrap {
+        display: grid;
+        grid-template-columns: 1.2fr 1fr;
+        gap: 1rem;
+        height: calc(100vh - 120px);
+    }
+
+    @@media (max-width: 992px) {
+        .pos-wrap {
+            grid-template-columns: 1fr;
+            height: auto;
+        }
+    }
+
+    .pos-left {
+        display: flex;
+        flex-direction: column;
+        gap: .75rem;
+        min-height: 0;
+    }
+
+    .pos-right {
+        display: flex;
+        flex-direction: column;
+        gap: .75rem;
+        min-height: 0;
+    }
+
+    .pos-search {
+        position: relative;
+    }
+
+        .pos-search input {
+            font-size: 1.15rem;
+            padding: .85rem 1rem;
+        }
+
+        .pos-search .hint {
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: .75rem;
+            color: #8c7a5a;
+            background: #fdf6ec;
+            padding: 2px 8px;
+            border-radius: 6px;
+        }
+
+    .product-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+        gap: .6rem;
+        overflow-y: auto;
+        flex: 1;
+        padding-right: 4px;
+    }
+
+    .product-card {
+        background: #fff;
+        border: 1px solid #eadfc8;
+        border-radius: 10px;
+        padding: .7rem;
+        cursor: pointer;
+        user-select: none;
+        transition: .1s ease-in-out;
+    }
+
+        .product-card:hover {
+            border-color: #c98a4b;
+            transform: translateY(-1px);
+        }
+
+        .product-card .name {
+            font-weight: 600;
+            font-size: .92rem;
+            line-height: 1.2;
+        }
+
+        .product-card .cat {
+            font-size: .72rem;
+            color: #8c7a5a;
+            margin-top: 2px;
+        }
+
+        .product-card .price {
+            font-weight: 700;
+            color: #a86f38;
+            margin-top: 6px;
+        }
+
+        .product-card .bc {
+            font-size: .7rem;
+            color: #999;
+        }
+
+        .product-card.out {
+            opacity: .45;
+            pointer-events: none;
+        }
+
+    .cart-panel {
+        background: #fff;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(90,55,20,.08);
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        height: 100%;
+    }
+
+    .cart-header {
+        padding: .75rem 1rem;
+        border-bottom: 1px solid #eee;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .cart-body {
+        flex: 1;
+        overflow-y: auto;
+    }
+
+    .cart-table {
+        width: 100%;
+        font-size: .9rem;
+    }
+
+        .cart-table th {
+            background: #fdf6ec;
+            color: #5a3714;
+            font-weight: 600;
+            position: sticky;
+            top: 0;
+            font-size: .78rem;
+            text-transform: uppercase;
+        }
+
+        .cart-table th, .cart-table td {
+            padding: .45rem .55rem;
+            vertical-align: middle;
+        }
+
+        .cart-table tr td {
+            border-bottom: 1px solid #f4efe4;
+        }
+
+    .qty-input {
+        width: 70px;
+        text-align: right;
+        padding: .25rem .35rem;
+    }
+
+    .line-total {
+        font-weight: 600;
+        text-align: right;
+    }
+
+    .cart-empty {
+        padding: 3rem 1rem;
+        text-align: center;
+        color: #b8a98e;
+    }
+
+        .cart-empty .em {
+            font-size: 2.5rem;
+        }
+
+    .cart-footer {
+        border-top: 1px solid #eee;
+        padding: .75rem 1rem;
+        background: #fffdf8;
+    }
+
+    .summary-row {
+        display: flex;
+        justify-content: space-between;
+        font-size: .95rem;
+        margin-bottom: .35rem;
+    }
+
+        .summary-row.grand {
+            font-size: 1.35rem;
+            font-weight: 700;
+            color: #5a3714;
+            margin: .5rem 0;
+        }
+
+        .summary-row input {
+            width: 110px;
+            text-align: right;
+        }
+
+    .btn-checkout {
+        width: 100%;
+        padding: .85rem;
+        font-size: 1.05rem;
+        font-weight: 600;
+    }
+
+    .flash {
+        position: fixed;
+        top: 70px;
+        right: 20px;
+        z-index: 9999;
+        padding: .8rem 1.2rem;
+        border-radius: 10px;
+        color: #fff;
+        font-weight: 600;
+        box-shadow: 0 6px 20px rgba(0,0,0,.15);
+    }
+
+        .flash.ok {
+            background: #2e9e5b;
+        }
+
+        .flash.err {
+            background: #d9534f;
+        }
+</style>
+
+<div class="pos-wrap">
+
+    <div class="pos-left">
+        <div class="pos-search">
+            <input id="searchBox" class="form-control"
+                   placeholder="Scan barcode or type product name… (Enter to add)" autocomplete="off" autofocus />
+            <span class="hint">F2 = focus • Enter = add</span>
+        </div>
+
+        <div id="productGrid" class="product-grid">
+            @foreach (var p in Model.Products)
+            {
+                <div class="product-card"
+                     data-id="@p.ProductId"
+                     data-name="@p.ProductName"
+                     data-barcode="@(p.Barcode ?? "")"
+                     data-price="@p.SalePrice"
+                     data-unit="@p.Unit"
+                     title="@p.CategoryName">
+                    <div class="name">@p.ProductName</div>
+                    <div class="cat">@p.CategoryName</div>
+                    @if (!string.IsNullOrEmpty(p.Barcode))
+                    {
+                        <div class="bc">@p.Barcode</div>
+                    }
+                    <div class="price">₨ @p.SalePrice.ToString("N2") <span style="font-size:.7rem;font-weight:400;color:#8c7a5a;">/ @p.Unit</span></div>
+                </div>
+            }
+            @if (!Model.Products.Any())
+            {
+                <div class="text-muted p-4">No active products. Add products first.</div>
+            }
+        </div>
+    </div>
+
+    <div class="pos-right">
+        <div class="cart-panel">
+            <div class="cart-header">
+                <div>
+                    <div class="fw-bold">🛒 Current Sale</div>
+                    <div class="small text-muted">Invoice: @Model.InvoiceNo</div>
+                </div>
+                <button id="clearCartBtn" class="btn btn-sm btn-outline-danger">Clear (Esc)</button>
+            </div>
+
+            <div class="cart-body">
+                <table class="cart-table">
+                    <thead>
+                        <tr>
+                            <th>Item</th>
+                            <th style="width:90px;">Qty</th>
+                            <th style="width:90px;" class="text-end">Price</th>
+                            <th style="width:90px;" class="text-end">Total</th>
+                            <th style="width:36px;"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="cartBody"></tbody>
+                </table>
+                <div id="cartEmpty" class="cart-empty">
+                    <div class="em">🧾</div>
+                    <div>No items yet</div>
+                    <div class="small mt-1">Scan / search and press <kbd>Enter</kbd></div>
+                </div>
+            </div>
+
+            <div class="cart-footer">
+                <div class="summary-row">
+                    <span>Subtotal</span>
+                    <span>₨ <span id="subTotal">0.00</span></span>
+                </div>
+                <div class="summary-row">
+                    <label for="discountInput">Discount</label>
+                    <input id="discountInput" type="number" min="0" step="0.01" value="0" class="form-control form-control-sm d-inline-block" />
+                </div>
+                <div class="summary-row grand">
+                    <span>Total</span>
+                    <span>₨ <span id="grandTotal">0.00</span></span>
+                </div>
+                <div class="summary-row">
+                    <label for="paidInput">Paid</label>
+                    <input id="paidInput" type="number" min="0" step="0.01" value="0" class="form-control form-control-sm d-inline-block" />
+                </div>
+                <div class="summary-row">
+                    <label for="paymentSelect">Payment</label>
+                    <select id="paymentSelect" class="form-select form-select-sm" style="width:130px;">
+                        @foreach (var m in Model.PaymentMethods)
+                        {
+                            <option value="@m">@m</option>
+                        }
+                    </select>
+                </div>
+                <div class="summary-row">
+                    <span>Change / Remaining</span>
+                    <span>₨ <span id="remainingAmt">0.00</span></span>
+                </div>
+
+                <button id="checkoutBtn" class="btn btn-success btn-checkout mt-2">
+                    ✅ Complete Sale (F10)
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@Html.AntiForgeryToken()
+
+@section Scripts {
+    <script>
+        (function () {
+            const products = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(
+                            Model.Products,
+                            new System.Text.Json.JsonSerializerOptions
+                            {
+                                    PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase
+                            }));
+
+        const cart = [];
+
+            const $search    = document.getElementById('searchBox');
+            const $grid      = document.getElementById('productGrid');
+            const $cartBody  = document.getElementById('cartBody');
+            const $cartEmpty = document.getElementById('cartEmpty');
+            const $sub       = document.getElementById('subTotal');
+            const $grand     = document.getElementById('grandTotal');
+            const $discount  = document.getElementById('discountInput');
+            const $paid      = document.getElementById('paidInput');
+            const $payMethod = document.getElementById('paymentSelect');
+            const $remain    = document.getElementById('remainingAmt');
+            const $checkout  = document.getElementById('checkoutBtn');
+            const $clear     = document.getElementById('clearCartBtn');
+
+            const tokenInput = document.querySelector('input[name="__RequestVerificationToken"]');
+            const token = tokenInput ? tokenInput.value : '';
+
+            const fmt = n => Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+            function flash(msg, type) {
+                var el = document.createElement('div');
+                el.className = 'flash ' + (type || 'ok');
+                el.textContent = msg;
+                document.body.appendChild(el);
+                setTimeout(function () { el.remove(); }, 2200);
+            }
+
+            function subTotal() { return cart.reduce(function (s, i) { return s + i.price * i.qty; }, 0); }
+            function grandTotal() {
+                var st = subTotal();
+                var d  = Math.min(Number($discount.value) || 0, st);
+                return Math.max(0, st - d);
+            }
+            function refreshTotals() {
+                var st = subTotal();
+                var gt = grandTotal();
+                var paid = Number($paid.value) || 0;
+                $sub.textContent    = fmt(st);
+                $grand.textContent  = fmt(gt);
+                $remain.textContent = fmt(Math.max(0, gt - paid));
+            }
+
+            function addToCart(productId, qty) {
+                qty = qty || 1;
+                var p = null;
+                for (var i = 0; i < products.length; i++) {
+                    if (products[i].productId === productId) { p = products[i]; break; }
+                }
+                if (!p) return;
+
+                var existing = null;
+                for (var j = 0; j < cart.length; j++) {
+                    if (cart[j].productId === productId) { existing = cart[j]; break; }
+                }
+                if (existing) {
+                    existing.qty += qty;
+                } else {
+                    cart.push({
+                        productId: p.productId,
+                        name: p.productName || '',
+                        unit: p.unit || 'Pcs',
+                        price: Number(p.salePrice) || 0,
+                        qty: qty
+                    });
+                }
+                renderCart();
+                if (Number($paid.value) === 0) {
+                    $paid.value = grandTotal().toFixed(2);
+                    refreshTotals();
+                }
+            }
+
+            function findByInput(text) {
+                text = (text || '').trim();
+                if (!text) return null;
+
+                var i;
+                for (i = 0; i < products.length; i++) {
+                    if (products[i].barcode && products[i].barcode === text) return products[i];
+                }
+                if (/^\d+$/.test(text)) {
+                    var id = Number(text);
+                    for (i = 0; i < products.length; i++) {
+                        if (products[i].productId === id) return products[i];
+                    }
+                }
+                var lower = text.toLowerCase();
+                for (i = 0; i < products.length; i++) {
+                    var nm = (products[i].productName || '').toLowerCase();
+                    if (nm.indexOf(lower) !== -1) return products[i];
+                }
+                return null;
+            }
+
+            function renderCart() {
+                $cartBody.innerHTML = '';
+                $cartEmpty.style.display = cart.length === 0 ? 'block' : 'none';
+
+                for (var idx = 0; idx < cart.length; idx++) {
+                    var item = cart[idx];
+                    var tr = document.createElement('tr');
+                    tr.innerHTML =
+                        '<td>' +
+                            '<div class="fw-semibold">' + escapeHtml(item.name) + '</div>' +
+                            '<div class="small text-muted">₨ ' + fmt(item.price) + ' / ' + escapeHtml(item.unit) + '</div>' +
+                        '</td>' +
+                        '<td>' +
+                            '<input type="number" min="0.001" step="0.001" value="' + item.qty + '" ' +
+                                   'class="form-control form-control-sm qty-input" data-idx="' + idx + '" />' +
+                        '</td>' +
+                        '<td class="text-end">₨ ' + fmt(item.price) + '</td>' +
+                        '<td class="line-total">₨ ' + fmt(item.price * item.qty) + '</td>' +
+                        '<td>' +
+                            '<button class="btn btn-sm btn-outline-danger px-2 py-0 remove-btn" data-idx="' + idx + '">×</button>' +
+                        '</td>';
+                    $cartBody.appendChild(tr);
+                }
+
+                var qtyInputs = $cartBody.querySelectorAll('.qty-input');
+                for (var q = 0; q < qtyInputs.length; q++) {
+                    (function (inp) {
+                        inp.addEventListener('change', function (e) {
+                            var i = Number(e.target.dataset.idx);
+                            var v = parseFloat(e.target.value);
+                            if (!(v > 0)) { cart[i].qty = 1; e.target.value = 1; }
+                            else cart[i].qty = v;
+                            renderCart();
+                        });
+                        inp.addEventListener('keydown', function (e) {
+                            if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); }
+                        });
+                    })(qtyInputs[q]);
+                }
+
+                var removeBtns = $cartBody.querySelectorAll('.remove-btn');
+                for (var r = 0; r < removeBtns.length; r++) {
+                    (function (btn) {
+                        btn.addEventListener('click', function (e) {
+                            cart.splice(Number(e.target.dataset.idx), 1);
+                            renderCart();
+                        });
+                    })(removeBtns[r]);
+                }
+
+                refreshTotals();
+            }
+
+            function escapeHtml(s) {
+                return String(s).replace(/[&<>"']/g, function (c) {
+                    return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c];
+                });
+            }
+
+            function runSearch() {
+                var text = $search.value.trim();
+                if (!text) return;
+
+                var p = findByInput(text);
+                if (p) {
+                    addToCart(p.productId, 1);
+                    $search.value = '';
+                } else {
+                    flash('No product matched: ' + text, 'err');
+                    $search.select();
+                }
+            }
+
+            $search.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter') { e.preventDefault(); runSearch(); }
+                if (e.key === 'Escape') { $search.value = ''; }
+            });
+
+            $grid.addEventListener('click', function (e) {
+                var card = e.target.closest('.product-card');
+                if (!card) return;
+                addToCart(Number(card.dataset.id), 1);
+                $search.focus();
+            });
+
+            $discount.addEventListener('input', refreshTotals);
+            $paid.addEventListener('input', refreshTotals);
+
+            $clear.addEventListener('click', function () {
+                cart.length = 0;
+                $discount.value = 0;
+                $paid.value = 0;
+                renderCart();
+                $search.focus();
+            });
+
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'F2') { e.preventDefault(); $search.focus(); $search.select(); }
+                if (e.key === 'F10') { e.preventDefault(); doCheckout(); }
+                if (e.key === 'Escape' && document.activeElement.tagName !== 'INPUT'
+                    && document.activeElement.tagName !== 'SELECT') {
+                    $search.focus();
+                }
+            });
+
+            function doCheckout() {
+                if (cart.length === 0) { flash('Cart is empty.', 'err'); return; }
+
+                var st   = subTotal();
+                var disc = Math.min(Number($discount.value) || 0, st);
+                var gt   = Math.max(0, st - disc);
+                var paid = Number($paid.value) || 0;
+
+                if (paid < gt) {
+                    if (!confirm('Paid amount (₨ ' + fmt(paid) + ') is less than total (₨ ' + fmt(gt) + '). Continue with remaining ₨ ' + fmt(gt - paid) + '?'))
+                        return;
+                }
+
+                var items = [];
+                for (var i = 0; i < cart.length; i++) {
+                    items.push({
+                        productId: cart[i].productId,
+                        quantity: cart[i].qty,
+                        unitPrice: cart[i].price,
+                        discount: 0,
+                        totalAmount: cart[i].price * cart[i].qty
+                    });
+                }
+
+                var body = {
+                    subTotal: st,
+                    discount: disc,
+                    grandTotal: gt,
+                    paidAmount: paid,
+                    paymentMethod: $payMethod.value,
+                    items: items
+                };
+
+                $checkout.disabled = true;
+                fetch('/Pos/Checkout', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'RequestVerificationToken': token
+                    },
+                    body: JSON.stringify(body)
+                })
+                .then(function (res) {
+                    return res.json().then(function (data) { return { ok: res.ok, data: data }; });
+                })
+                .then(function (result) {
+                    if (!result.ok) {
+                        flash(result.data.message || 'Checkout failed', 'err');
+                        return;
+                    }
+                    flash('✅ Sale saved • ' + result.data.invoiceNo, 'ok');
+                    cart.length = 0;
+                    $discount.value = 0;
+                    $paid.value = 0;
+                    renderCart();
+                    window.open('/Pos/Receipt/' + result.data.saleId, '_blank');
+                    $search.focus();
+                })
+                .catch(function (err) {
+                    flash('Network error: ' + err.message, 'err');
+                })
+                .then(function () {
+                    $checkout.disabled = false;
+                });
+            }
+
+            $checkout.addEventListener('click', doCheckout);
+
+            renderCart();
+            $search.focus();
+        })();
+    </script>
+}

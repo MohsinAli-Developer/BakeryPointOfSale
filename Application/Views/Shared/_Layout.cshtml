@@ -1,0 +1,126 @@
+﻿@* 
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>@ViewData["Title"] - </title>
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/css/site.css" />
+</head>
+<body>
+    <nav class="navbar navbar-dark bg-dark px-3">
+        <a class="navbar-brand" asp-controller="Dashboard" asp-action="Index">🥖 </a>
+        <div class="ms-auto d-flex align-items-center gap-3">
+            <span class="text-light">
+                @User.Identity?.Name
+                <span class="badge bg-warning text-dark">@User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value</span>
+            </span>
+            <form asp-controller="Account" asp-action="Logout" method="post" class="m-0">
+                @Html.AntiForgeryToken()
+                <button class="btn btn-sm btn-outline-light">Logout</button>
+            </form>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        @RenderBody()
+    </div>
+
+    <partial name="_ValidationScriptsPartial" />
+</body>
+</html> *@
+
+
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - </title>
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/css/site.css" />
+</head>
+<body>
+    <!-- TOP NAVBAR -->
+    <nav class="navbar navbar-dark bg-dark px-3 fixed-top shadow-sm">
+        <a class="navbar-brand" asp-controller="Dashboard" asp-action="Index">
+            🥖 
+        </a>
+        <div class="ms-auto d-flex align-items-center gap-3">
+            <span class="text-light">
+                @User.Identity?.Name
+                <span class="badge bg-warning text-dark">
+                    @User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value
+                </span>
+            </span>
+            <form asp-controller="Account" asp-action="Logout" method="post" class="m-0">
+                @Html.AntiForgeryToken()
+                <button class="btn btn-sm btn-outline-light">Logout</button>
+            </form>
+        </div>
+    </nav>
+
+    <!-- BODY -->
+    <div class="app-wrapper">
+        <!-- SIDEBAR -->
+        <aside class="sidebar">
+            <ul class="nav flex-column pt-2">
+                <li class="nav-item">
+                    <a class="nav-link @(ViewData["Active"] as string == "Dashboard" ? "active" : "")"
+                       asp-controller="Dashboard" asp-action="Index">📊 Dashboard</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link @(ViewData["Active"] as string == "Category" ? "active" : "")"
+                       asp-controller="Category" asp-action="Index">🗂️ Categories</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link @(ViewData["Active"] as string == "Product" ? "active" : "")"
+                       asp-controller="Product" asp-action="Index">🧁 Products</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link @(ViewData["Active"] as string == "Pos" ? "active" : "")"
+                       asp-controller="Pos" asp-action="Index">🧾 POS Terminal</a>
+                </li>
+
+
+                @if (User.IsInRole("Admin"))
+                {
+                    <li class="nav-item mt-3">
+                        <span class="sidebar-section">Admin</span>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#">👥 Users</a>
+                    </li>
+                }
+            </ul>
+        </aside>
+
+        <main class="main-content">
+            @if (TempData["Success"] != null)
+            {
+                <div class="alert alert-success alert-dismissible fade show">
+                    @TempData["Success"]
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            }
+            @if (TempData["Error"] != null)
+            {
+                <div class="alert alert-danger alert-dismissible fade show">
+                    @TempData["Error"]
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            }
+
+            @RenderBody()
+        </main>
+    </div>
+
+    <script src="~/lib/jquery/dist/jquery.min.js"></script>
+    <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    <partial name="_ValidationScriptsPartial" />
+
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

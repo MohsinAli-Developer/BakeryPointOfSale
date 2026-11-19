@@ -1,0 +1,95 @@
+﻿@model Application.Models.ProductListViewModel
+@{
+    ViewData["Title"] = "Products";
+    ViewData["Active"] = "Product";
+    Layout = "_Layout";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h3 class="mb-0">🧁 Products</h3>
+    <a asp-action="Create" class="btn btn-primary">+ New Product</a>
+</div>
+
+<div class="card">
+    <div class="card-body p-0 table-responsive">
+        <table class="table table-hover mb-0 align-middle">
+            <thead>
+                <tr>
+                    <th style="width:60px;">#</th>
+                    <th>Product</th>
+                    <th>Category</th>
+                    <th>Barcode</th>
+                    <th class="text-end">Sale Price</th>
+                    <th class="text-end">Purchase Price</th>
+                    <th>Unit</th>
+                    <th style="width:110px;">Status</th>
+                    <th style="width:260px;" class="text-end">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (!Model.Products.Any())
+                {
+                    <tr>
+                        <td colspan="9" class="text-center text-muted py-4">
+                            No products yet. Click "New Product" to add one.
+                        </td>
+                    </tr>
+                }
+                else
+                {
+                    foreach (var p in Model.Products)
+                    {
+                        var catName = Model.CategoryNames.TryGetValue(p.CategoryId, out var n) ? n : "-";
+                        <tr>
+                            <td>@p.ProductId</td>
+                            <td class="fw-semibold">@p.ProductName</td>
+                            <td>@catName</td>
+                            <td>
+                                @if (!string.IsNullOrEmpty(p.Barcode))
+                                {
+                                    <code>@p.Barcode</code>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">—</span>
+                                }
+                            </td>
+                            <td class="text-end">₨ @p.SalePrice.ToString("N2")</td>
+                            <td class="text-end">₨ @p.PurchasePrice.ToString("N2")</td>
+                            <td>@p.Unit</td>
+                            <td>
+                                @if (p.IsActive)
+                                {
+                                    <span class="badge bg-success">Active</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-secondary">Inactive</span>
+                                }
+                            </td>
+                            <td class="text-end">
+                                <a asp-action="Edit" asp-route-id="@p.ProductId"
+                                   class="btn btn-sm btn-outline-primary">Edit</a>
+
+                                <form asp-action="ToggleActive" asp-route-id="@p.ProductId"
+                                      method="post" class="d-inline">
+                                    @Html.AntiForgeryToken()
+                                    <button class="btn btn-sm btn-outline-warning">
+                                        @(p.IsActive ? "Deactivate" : "Activate")
+                                    </button>
+                                </form>
+
+                                <form asp-action="Delete" asp-route-id="@p.ProductId"
+                                      method="post" class="d-inline"
+                                      onsubmit="return confirm('Delete this product?');">
+                                    @Html.AntiForgeryToken()
+                                    <button class="btn btn-sm btn-outline-danger">Delete</button>
+                                </form>
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+</div>

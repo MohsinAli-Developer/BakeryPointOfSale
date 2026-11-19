@@ -1,0 +1,29 @@
+﻿@model Application.Models.Category
+@{
+    ViewData["Title"] = "New Category";
+    Layout = "_Layout";
+}
+
+<h3 class="mb-3">➕ New Category</h3>
+
+<div class="card" style="max-width:520px;">
+    <div class="card-body">
+        <form asp-action="Create" method="post">
+            <div asp-validation-summary="ModelOnly" class="text-danger small mb-2"></div>
+
+            <div class="mb-3">
+                <label asp-for="CategoryName" class="form-label">Category Name</label>
+                <input asp-for="CategoryName" class="form-control" placeholder="e.g. Breads, Cakes, Pastries" />
+                <span asp-validation-for="CategoryName" class="text-danger small"></span>
+            </div>
+
+            <div class="form-check mb-3">
+                <input asp-for="IsActive" class="form-check-input" checked />
+                <label asp-for="IsActive" class="form-check-label">Active</label>
+            </div>
+
+            <button type="submit" class="btn btn-primary">Save</button>
+            <a asp-action="Index" class="btn btn-outline-secondary">Cancel</a>
+        </form>
+    </div>
+</div>

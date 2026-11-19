@@ -1,0 +1,58 @@
+﻿.auth-body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: linear-gradient(135deg, #f6e7c1, #c98a4b);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.login-wrapper {
+    width: 100%;
+    padding: 1.5rem;
+    display: flex;
+    justify-content: center;
+}
+
+.login-card {
+    width: 100%;
+    max-width: 420px;
+    background: #fffdf8;
+    border-radius: 20px;
+    padding: 2.5rem 2rem;
+    box-shadow: 0 20px 60px rgba(90, 55, 20, 0.25);
+}
+
+.login-header {
+    text-align: center;
+    margin-bottom: 2rem;
+}
+
+.logo-circle {
+    width: 72px;
+    height: 72px;
+    margin: 0 auto 1rem;
+    background: linear-gradient(135deg, #e8b874, #c98a4b);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2rem;
+}
+
+.login-header h2 {
+    margin: 0;
+    font-weight: 700;
+    color: #5a3714;
+}
+
+.btn-primary {
+    background: #c98a4b;
+    border-color: #c98a4b;
+}
+
+    .btn-primary:hover {
+        background: #a86f38;
+        border-color: #a86f38;
+    }
